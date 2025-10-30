@@ -1,0 +1,3 @@
+"""FastAPI IoT application package."""
+
+
