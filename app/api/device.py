@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.db import crud
 from app.db.connection import get_db
 from app.schemas.device import DeviceCreate, DeviceUpdate
+from app.core.auth import get_current_user
 
 
 router = APIRouter(prefix="/device", tags=["Device"])
@@ -16,13 +17,36 @@ def create_device(device: DeviceCreate):
 
 
 @router.get("/")
-def list_devices():
-	return crud.get_all("device_master")
+def list_devices(current_user = Depends(get_current_user)):
+	with get_db() as cur:
+		cur.execute(
+			"""
+			SELECT d.*
+			FROM device_master d
+			JOIN plant_master p ON d.plant_id=p.plant_id
+			JOIN site_master s ON p.site_id=s.site_id
+			WHERE s.org_id=%s
+			ORDER BY d.device_id
+			""",
+			(current_user["org_id"],),
+		)
+		return cur.fetchall()
 
 
 @router.get("/{device_id}")
-def get_device(device_id: str):
-	row = crud.get_by_id("device_master", "device_id", device_id)
+def get_device(device_id: str, current_user = Depends(get_current_user)):
+	with get_db() as cur:
+		cur.execute(
+			"""
+			SELECT d.*
+			FROM device_master d
+			JOIN plant_master p ON d.plant_id=p.plant_id
+			JOIN site_master s ON p.site_id=s.site_id
+			WHERE s.org_id=%s AND d.device_id=%s
+			""",
+			(current_user["org_id"], device_id),
+		)
+		row = cur.fetchone()
 	if not row:
 		raise HTTPException(status_code=404, detail="Device not found")
 	return row
@@ -47,8 +71,20 @@ def delete_device(device_id: str):
 
 
 @router.get("/{device_id}/latest")
-def get_device_latest(device_id: str):
+def get_device_latest(device_id: str, current_user = Depends(get_current_user)):
 	with get_db() as cur:
+		cur.execute(
+			"""
+			SELECT 1
+			FROM device_master d
+			JOIN plant_master p ON d.plant_id=p.plant_id
+			JOIN site_master s ON p.site_id=s.site_id
+			WHERE s.org_id=%s AND d.device_id=%s
+			""",
+			(current_user["org_id"], device_id),
+		)
+		if cur.fetchone() is None:
+			raise HTTPException(status_code=403, detail="Device not in your organisation")
 		cur.execute(
 			"""
 			SELECT ts, data

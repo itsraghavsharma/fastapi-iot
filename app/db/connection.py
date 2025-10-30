@@ -1,5 +1,6 @@
 import os
 import psycopg2
+from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 
 
@@ -15,7 +16,7 @@ def _get_connection():
 @contextmanager
 def get_db():
 	conn = _get_connection()
-	cur = conn.cursor()
+	cur = conn.cursor(cursor_factory=RealDictCursor)
 	try:
 		yield cur
 		conn.commit()

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from psycopg2.extras import Json
 from app.schemas.telemetry import TelemetryIn
 from app.db.connection import get_db
+from app.core.auth import get_current_user
 
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
@@ -21,11 +22,20 @@ def add_telemetry(data: TelemetryIn):
 
 
 @router.get("/")
-def list_telemetry(limit: int = 100):
+def list_telemetry(limit: int = 100, current_user = Depends(get_current_user)):
     with get_db() as cur:
         cur.execute(
-            "SELECT device_id, ts, data FROM telemetry ORDER BY ts DESC LIMIT %s;",
-            (limit,),
+            """
+            SELECT t.device_id, t.ts, t.data
+            FROM telemetry t
+            JOIN device_master d ON t.device_id=d.device_id
+            JOIN plant_master p ON d.plant_id=p.plant_id
+            JOIN site_master s ON p.site_id=s.site_id
+            WHERE s.org_id=%s
+            ORDER BY t.ts DESC
+            LIMIT %s;
+            """,
+            (current_user["org_id"], limit),
         )
         return cur.fetchall()
 
@@ -36,6 +46,7 @@ def get_device_telemetry(
     start_ms: int | None = None,
     end_ms: int | None = None,
     limit: int = 100,
+    current_user = Depends(get_current_user),
 ):
     params = [device_id]
     where = ["device_id=%s"]
@@ -47,6 +58,18 @@ def get_device_telemetry(
         params.append(end_ms)
     where_sql = " AND ".join(where)
     with get_db() as cur:
+        cur.execute(
+            """
+            SELECT 1
+            FROM device_master d
+            JOIN plant_master p ON d.plant_id=p.plant_id
+            JOIN site_master s ON p.site_id=s.site_id
+            WHERE s.org_id=%s AND d.device_id=%s
+            """,
+            (current_user["org_id"], device_id),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=403, detail="Device not in your organisation")
         cur.execute(
             f"SELECT device_id, ts, data FROM telemetry WHERE {where_sql} ORDER BY ts DESC LIMIT %s;",
             tuple(params + [limit]),

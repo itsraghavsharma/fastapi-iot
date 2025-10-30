@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List
 from app.db.connection import get_db
+from app.core.auth import get_current_user
 
 
 router = APIRouter(prefix="/charts", tags=["Charts"])
@@ -18,8 +19,20 @@ ALLOWED_METRICS = {
 
 
 @router.get("/overview/{device_id}")
-def overview(device_id: str):
+def overview(device_id: str, current_user = Depends(get_current_user)):
 	with get_db() as cur:
+		cur.execute(
+			"""
+			SELECT 1
+			FROM device_master d
+			JOIN plant_master p ON d.plant_id=p.plant_id
+			JOIN site_master s ON p.site_id=s.site_id
+			WHERE s.org_id=%s AND d.device_id=%s
+			""",
+			(current_user["org_id"], device_id),
+		)
+		if cur.fetchone() is None:
+			raise HTTPException(status_code=403, detail="Device not in your organisation")
 		cur.execute(
 			"""
 			SELECT ts,
@@ -58,6 +71,7 @@ def timeseries(
 	start_ms: int | None = None,
 	end_ms: int | None = None,
 	limit: int = 500,
+	current_user = Depends(get_current_user),
 ):
 	invalid = [m for m in metrics if m not in ALLOWED_METRICS]
 	if invalid:
@@ -76,6 +90,18 @@ def timeseries(
 	where_sql = " AND ".join(where)
 
 	with get_db() as cur:
+		cur.execute(
+			"""
+			SELECT 1
+			FROM device_master d
+			JOIN plant_master p ON d.plant_id=p.plant_id
+			JOIN site_master s ON p.site_id=s.site_id
+			WHERE s.org_id=%s AND d.device_id=%s
+			""",
+			(current_user["org_id"], device_id),
+		)
+		if cur.fetchone() is None:
+			raise HTTPException(status_code=403, detail="Device not in your organisation")
 		cur.execute(
 			f"SELECT {select_sql} FROM telemetry WHERE {where_sql} ORDER BY ts ASC LIMIT %s;",
 			tuple(params + [limit]),

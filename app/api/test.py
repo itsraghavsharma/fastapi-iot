@@ -1,29 +1,55 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from typing import List, Any, Dict
 from app.db.connection import get_db
 from app.api.charts import ALLOWED_METRICS
+from app.core.auth import get_current_user
 
 
 router = APIRouter(prefix="/test", tags=["Test"])
 
 
-def _fetch_devices(limit: int | None = None, only_device_id: str | None = None):
+def _fetch_devices(org_id: str, limit: int | None = None, only_device_id: str | None = None):
 	with get_db() as cur:
 		if only_device_id:
 			cur.execute(
-				"SELECT device_id FROM device_master WHERE device_id=%s;",
-				(only_device_id,),
+				"""
+				SELECT d.device_id
+				FROM device_master d
+				JOIN plant_master p ON d.plant_id=p.plant_id
+				JOIN site_master s ON p.site_id=s.site_id
+				WHERE s.org_id=%s AND d.device_id=%s
+				ORDER BY d.device_id
+				""",
+				(org_id, only_device_id),
 			)
 		else:
 			if limit is None:
-				cur.execute("SELECT device_id FROM device_master ORDER BY device_id;")
+				cur.execute(
+					"""
+					SELECT d.device_id
+					FROM device_master d
+					JOIN plant_master p ON d.plant_id=p.plant_id
+					JOIN site_master s ON p.site_id=s.site_id
+					WHERE s.org_id=%s
+					ORDER BY d.device_id
+					""",
+					(org_id,),
+				)
 			else:
 				cur.execute(
-					"SELECT device_id FROM device_master ORDER BY device_id LIMIT %s;",
-					(limit,),
+					"""
+					SELECT d.device_id
+					FROM device_master d
+					JOIN plant_master p ON d.plant_id=p.plant_id
+					JOIN site_master s ON p.site_id=s.site_id
+					WHERE s.org_id=%s
+					ORDER BY d.device_id
+					LIMIT %s
+					""",
+					(org_id, limit),
 				)
 		rows = cur.fetchall()
-		return [r[0] for r in rows]
+		return [r["device_id"] for r in rows]
 
 
 def _fetch_overview(device_id: str):
@@ -89,8 +115,10 @@ def run(
 	device_limit: int = 5,
 	hours: int = 24,
 	timeseries_limit: int = 50,
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
 	device_ids = _fetch_devices(
+		org_id=current_user["org_id"],
 		limit=None if device_id else device_limit,
 		only_device_id=device_id,
 	)

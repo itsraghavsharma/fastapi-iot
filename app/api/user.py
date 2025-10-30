@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from passlib.hash import bcrypt
+from passlib.hash import pbkdf2_sha256
 from app.db import crud
 from app.schemas.user import UserBase
 
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/user", tags=["User"])
 def create_user(user: UserBase):
 	user_data = {
 		"username": user.username,
-		"password_hash": bcrypt.hash(user.password),
+		"password": pbkdf2_sha256.hash(user.password),
 		"org_id": user.org_id,
 		"role": user.role,
 	}

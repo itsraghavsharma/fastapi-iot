@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api import organisation, site, plant, telemetry, user, device, charts, test
+from app.api import organisation, site, plant, telemetry, user, device, charts, test, auth
 
 
 app = FastAPI(title="Industrial IoT API")
@@ -12,5 +12,6 @@ app.include_router(telemetry.router)
 app.include_router(device.router)
 app.include_router(charts.router)
 app.include_router(test.router)
+app.include_router(auth.router)
 
 
