@@ -26,17 +26,17 @@ def get_by_id(table: str, key: str, value):
 
 def delete_by_id(table: str, key: str, value):
 	with get_db() as cur:
-        cur.execute(f"DELETE FROM {table} WHERE {key}=%s;", (value,))
+		cur.execute(f"DELETE FROM {table} WHERE {key}=%s;", (value,))
 
 
 def update_by_id(table: str, key: str, value, data: dict):
-    with get_db() as cur:
-        set_clause = ', '.join([f"{k}=%s" for k in data.keys()])
-        params = list(data.values()) + [value]
-        cur.execute(
-            f"UPDATE {table} SET {set_clause} WHERE {key}=%s RETURNING *;",
-            tuple(params),
-        )
-        return cur.fetchone()
+	with get_db() as cur:
+		set_clause = ', '.join([f"{k}=%s" for k in data.keys()])
+		params = list(data.values()) + [value]
+		cur.execute(
+			f"UPDATE {table} SET {set_clause} WHERE {key}=%s RETURNING *;",
+			tuple(params),
+		)
+		return cur.fetchone()
 
 
