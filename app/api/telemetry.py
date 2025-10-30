@@ -9,8 +9,21 @@ router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
 
 
 @router.post("/")
-def add_telemetry(data: TelemetryIn):
+def add_telemetry(data: TelemetryIn, current_user = Depends(get_current_user)):
 	with get_db() as cur:
+		# Ensure device belongs to user's org
+		cur.execute(
+			"""
+			SELECT 1
+			FROM device_master d
+			JOIN plant_master p ON d.plant_id=p.plant_id
+			JOIN site_master s ON p.site_id=s.site_id
+			WHERE s.org_id=%s AND d.device_id=%s
+			""",
+			(current_user["org_id"], data.device_id),
+		)
+		if cur.fetchone() is None:
+			raise HTTPException(status_code=403, detail="Device not in your organisation")
 		cur.execute(
 			"""
 			INSERT INTO telemetry (device_id, ts, data)
@@ -78,8 +91,21 @@ def get_device_telemetry(
 
 
 @router.delete("/{device_id}/{ts_ms}")
-def delete_telemetry(device_id: str, ts_ms: int):
+def delete_telemetry(device_id: str, ts_ms: int, current_user = Depends(get_current_user)):
     with get_db() as cur:
+        # Ensure device belongs to user's org
+        cur.execute(
+            """
+            SELECT 1
+            FROM device_master d
+            JOIN plant_master p ON d.plant_id=p.plant_id
+            JOIN site_master s ON p.site_id=s.site_id
+            WHERE s.org_id=%s AND d.device_id=%s
+            """,
+            (current_user["org_id"], device_id),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=403, detail="Device not in your organisation")
         cur.execute(
             "DELETE FROM telemetry WHERE device_id=%s AND ts=to_timestamp(%s/1000.0);",
             (device_id, ts_ms),
@@ -88,10 +114,23 @@ def delete_telemetry(device_id: str, ts_ms: int):
 
 
 @router.put("/{device_id}/{ts_ms}")
-def update_telemetry(device_id: str, ts_ms: int, payload: dict):
+def update_telemetry(device_id: str, ts_ms: int, payload: dict, current_user = Depends(get_current_user)):
     if not payload:
         raise HTTPException(status_code=400, detail="No data provided")
     with get_db() as cur:
+        # Ensure device belongs to user's org
+        cur.execute(
+            """
+            SELECT 1
+            FROM device_master d
+            JOIN plant_master p ON d.plant_id=p.plant_id
+            JOIN site_master s ON p.site_id=s.site_id
+            WHERE s.org_id=%s AND d.device_id=%s
+            """,
+            (current_user["org_id"], device_id),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=403, detail="Device not in your organisation")
         cur.execute(
             """
             UPDATE telemetry

@@ -2,6 +2,7 @@ import os
 import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
+from app.db.connection import get_db
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -13,11 +14,18 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 	try:
 		payload = jwt.decode(token, secret, algorithms=algorithms)
 		username: str | None = payload.get("sub")
-		org_id: str | None = payload.get("org_id")
-		role: str | None = payload.get("role")
-		if not username or not org_id:
+		if not username:
 			raise HTTPException(status_code=401, detail="Invalid token payload")
-		return {"username": username, "org_id": org_id, "role": role}
+		# Always read org_id and role from DB to prevent token org spoofing
+		with get_db() as cur:
+			cur.execute(
+				"SELECT org_id, role FROM user_master WHERE username=%s;",
+				(username,),
+			)
+			row = cur.fetchone()
+			if not row:
+				raise HTTPException(status_code=401, detail="User not found")
+			return {"username": username, "org_id": row["org_id"], "role": row["role"]}
 	except jwt.ExpiredSignatureError:
 		raise HTTPException(status_code=401, detail="Token expired")
 	except jwt.InvalidTokenError:
